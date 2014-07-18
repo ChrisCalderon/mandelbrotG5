@@ -3,6 +3,7 @@ mandelbrotG5
 
 A pure Python script for creating arbitrarily hi resolution images of the Mandelbrot set
 
-This code was born out of helping my now ex-girlfriend with some CS homework a year ago,
-and it is named for the machine I primarily used for writing it on, my beautiful PowerMac
-G5 Quad.
+This code was born out of helping an old friend with some CS homework in 2012,
+and it is named for the machine I primarily used while working on it, my beautiful PowerMac G5 Quad (R.I.P.)
+
+The main dependancy ATM is pypng, which you can find with google. The test script also depends on Numpy and maybe Matplotlib.
