@@ -1,9 +1,8 @@
 mandelbrotG5
 ============
 
-A pure Python script for creating arbitrarily hi resolution images of the Mandelbrot set
+A pure Python script for creating arbitrarily hi resolution images of the Mandelbrot set. It works by creating rows of escape time values, and writing those values to files. The main process then turns the values into rgb colors and makes a .png image.
 
-This code was born out of helping an old friend with some CS homework in 2012,
-and it is named for the machine I primarily used while working on it, my beautiful PowerMac G5 Quad (R.I.P.)
+The code has one dependency, pypng, and was born out of helping an old friend with some CS homework in 2012,
 
-The main dependancy ATM is pypng, which you can find with google. The test script also depends on Numpy and maybe Matplotlib.
+This project is dedicated to my beautiful PowerMac G5 Quad (R.I.P.)
