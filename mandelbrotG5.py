@@ -1,113 +1,100 @@
-import multiprocessing
+#!/usr/bin/env python
+from mandelproc import MandelProc
+from multiprocessing import cpu_count
+import colors
 import png
+import argparse
+from array import array
+import math
+import os
+import sys
 
-def pixproc(i0, isteps, iskip, rsteps, fname, cp):
-    """This is the code that runs in each seperate process.
-    i0 is the start row, and istep is the row after the last row
-    (in keeping with python convention of using [start, end)
-    intervals) and iskip is the number of rows to skip. rsteps and
-    isteps are the number of points to use along the x and y axis
-    (real and imaginary, respectively.) fname is a string containing
-    the name to use for the temporary data file, and cp is the color
-    palette to use."""
-    def row(i_k):
-        #this is a generator which yields the pixel values for
-        #each column in the i_kth row. Everything in the mandelbrot
-        #set is colored black
-        for r in xrange(rsteps):
-            c=complex(RMIN + RLEN*(1.*r/rsteps),
-                      IMIN + ILEN*(1.*i_k/isteps))
-            if abs(1-(1-4*c)**0.5) < 1.0: #the main cardioid
-                yield 16
-                continue
-            if abs(c+1) < .25: #the biggest circle
-                yield 16
-                continue
-            z=c
-            for j in xrange(256):
-                z = z*z + c
-                if abs(z)>2: break
-            if j<255:
-                yield j%16
-            else:
-                yield 16
+parser = argparse.ArgumentParser(description='Generates images of the Mandelbrot set.',
+                                 epilog='Dedicated to my Powermac G5 Quad.')
+parser.add_argument('--height', '-H', help='Pixel height of the generated image', required=True, type=int)
+parser.add_argument('--width', '-W', help='Pixel width of the generated image', required=True, type=int)
+parser.add_argument('--processes', '-p', help='Number of processes to use for image generation.', default=cpu_count(), type=int)
+parser.add_argument('--iterations', '-i', help='Number of iterations for \'escape time\' test.', default=100, type=int)
+parser.add_argument('--verbose', '-v', help='Verbose output', action='store_true', default=False)
+
+
+# TODO: 
+# * add real/imag axis bound option for zooming/generating specific sections.
+# * add color pallete option; e.g. --colors #ff0000,#00ff00,#0000ff
+
+
+def row_color(row, pallete, default):
+    """Makes color data suitable for a png.Writer.
+
+    Arguments:
+    row - An iterable of smoothed iteration escape times.
+    pallete - A list of colors to use for interpolation.
+    default - The default color to use for NaN values; i.e. for values in the set."""
+
+    NaN = float('NaN')
+    result = []
+    l = len(pallete)
+    for iter_val in row:
+        if math.isnan(iter_val):
+            result.extend(default)
+        else:
+            p = iter_val % 1
+            i = int(iter_val % l)
+            rgb = colors.rgb_interp(pallete[i], pallete[(i + 1)%l], p)
+ #           print rgb
+            result.extend([int(255*c) for c in rgb])
+#    print result
+    return result
+
+
+def yield_rows(data_files, height, width, colors, default, v):
+    """Generates rows of color data from a list of data files."""
+    n = len(data_files)
+    for i in xrange(height):
+        df = data_files[i%n]
+        iter_vals = array('f')
+        iter_vals.fromstring(df.read(4*width)) # each float is 4 bytes.
+        yield row_color(iter_vals, colors, default)
+        if v:
+            sys.stdout.write('\rWrote row %d/%d' % (i, height))
+            sys.stdout.flush()
+    print
+
+
+def main():
+    args = parser.parse_args()
+    MandelProc.set_info(args.iterations,
+                        args.width,
+                        args.height,
+                        args.processes)
+    procs, msg_q = MandelProc.begin_compute()
+
     
-    RMIN, IMIN = -2, -1
-    RLEN, ILEN = 3, 2
-    writer = png.Writer(width=rsteps, height=(isteps/iskip), palette=cp)
-    f = open(fname, 'wb')
-    writer.write(f, (row(i) for i in xrange(i0, isteps, iskip)))
-    f.close()
-    return
+    done = 0
+    while done < args.processes:
+        r = msg_q.get()
+        if r == 'done':
+            done += 1
+        if args.verbose:
+            print r
 
+    for p in procs:
+        p.join()
 
-def main(width, height, cp):
-    """This main function chunks up the the graph so that
-    each cpu gets and equal amount of points to check. xsteps
-    and ysteps are the width and height respectively in pixels
-    of the image you want to make."""
-    pool = multiprocessing.Pool()
-    n = multiprocessing.cpu_count()
-    fnames = ["temp{}.png".format(i) for i in xrange(n)]
-    for y_0 in xrange(n):
-        pool.apply_async(pixproc, 
-                         (y_0, 
-                          height,
-                          n,
-                          width,
-                          fnames[y_0],
-                          cp))
-    pool.close()
-    pool.join()
-    return fnames
+    data_files = [open(p.results, 'rb') for p in procs]
+    img_file = open('mandelbrotG5-%dx%d.png'%(args.width,args.height), 'wb')
+    writer = png.Writer(args.width, args.height)
+    row_generator = yield_rows(data_files,
+                               args.height,
+                               args.width,
+                               colors.pallete,
+                               (0,0,0),
+                               args.verbose)
+    writer.write(img_file, row_generator)
+    for f in data_files:
+        f.close()
+        os.remove(f.name)
+        
 
-def rowIter(fnames, columns, rows):
-    """This function is a generator which for each
-    row in your image, yields a generator which yields
-    the data in each column of the specific row. fnames
-    is a list of strings containing the names of the temporary
-    files, and should be in order! columns and rows is the 
-    width and the height respectively of the image in pixels.
-    Also deletes the temporary files from disk."""
-    files = [png.Reader(fname).read()[2] for fname in fnames]
-    for _ in xrange(rows):
-        yield files[_%4].next()
-    
-
-if __name__=="__main__":
-    import sys
-    
-    #get the width and height from two arguments
-    width, height = map(int, sys.argv[1:]) 
-
-    cp = [(241, 233, 191),  #I stole this color pallete from:
-          (248, 201, 95),   #http://www.pygame.org/project-Mandelbrot+Set+Viewer-698-.html
-          (255, 170, 0), 
-          (204, 108, 0), 
-          (153, 87, 0), 
-          (106, 52, 3),
-          (66, 30, 15), 
-          (25, 7, 26),  
-          (9, 1, 47), 
-          (4, 4, 73), 
-          (0, 7, 100), 
-          (12, 44, 138), 
-          (24, 82, 177), 
-          (57, 125, 209),
-          (134, 181, 229), 
-          (211, 236, 248),
-          (0, 0, 0)]
-    
-    #get the file names of the temporary data files
-    fnames = main(width, height, cp)
-    
-    #open the file to be used for the picture
-    pic = open("mandelbrot.png", "wb")
-
-
-
-    #create the writer object
-    pic_writer = png.Writer(width=width, height=height, palette=cp)
-
-    #write the data
-    pic_writer.write(pic, rowIter(fnames, width, height))
+if __name__ == '__main__':
+    main()
