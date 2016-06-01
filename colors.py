@@ -37,9 +37,7 @@ def hsv_to_rgb(h, s, v):
 
 
 def interpolate(a, b, p):
-    lo = min(a, b)
-    dist = abs(a - b)
-    return lo + p*dist
+    return a + p*(b - a)
 
 def rgb_interp(c0, c1, p):
     # H1, S1, V1 = rgb_to_hsv(c0[0], c0[1], c0[2])
