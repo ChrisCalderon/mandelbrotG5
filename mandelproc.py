@@ -1,7 +1,7 @@
-from multiprocessing import Process, Queue, RawArray
+from multiprocessing import Process, RawArray, Event
 import numpy as np
-from array import array
 from math import log
+import colors
 
 
 class MandelProcException(Exception): pass
@@ -17,17 +17,17 @@ class MandelProc(Process):
     RMAX = None
     IMIN = None
     IMAX = None
+    PALLETE = None
 
-    def __init__(self, procnum, msg_q, data, *args, **kwds):
+    def __init__(self, procnum, data, row_flags, *args, **kwds):
         """A helper process for generating the Mandelbrot set."""
         Process.__init__(self, *args, **kwds)
         self.offset = procnum
-        self.msg_q = msg_q
         self.data = data
-
+        self.row_flags = row_flags
 
     @classmethod
-    def set_info(cls, iters, width, height, num_procs, rbounds, ibounds):
+    def set_info(cls, iters, width, height, num_procs, rbounds, ibounds, pallete):
         """Sets constants for the parallel computation.
 
         Argument:
@@ -43,6 +43,7 @@ class MandelProc(Process):
         cls.RMAX = rbounds[1]
         cls.IMIN = ibounds[0]
         cls.IMAX = ibounds[1]
+        cls.PALLETE = pallete
 
     @classmethod
     def begin_compute(cls):
@@ -57,20 +58,21 @@ class MandelProc(Process):
             "RMAX",
             "IMIN",
             "IMAX",
+            "PALLETE",
         ]
 
         for v in essential_values:
             if getattr(cls, v, None) is None:
                 raise MandelProcException(no_val.format(v))
         
-        shared_array = RawArray('f', cls.PIXWIDTH*cls.PIXHEIGHT)
-        np_array = np.frombuffer(shared_array, dtype='f')
-        np_array = np_array.reshape(cls.PIXHEIGHT, cls.PIXWIDTH)
-        msg_q = Queue()
-        procs = [cls(i, msg_q, np_array) for i in range(cls.STEP)]
+        shared_array = RawArray('B', 3*cls.PIXWIDTH*cls.PIXHEIGHT)
+        row_flags = RawArray('B', cls.PIXHEIGHT)
+        np_array = np.frombuffer(shared_array, dtype='B')
+        np_array = np_array.reshape(cls.PIXHEIGHT, 3*cls.PIXWIDTH)
+        procs = [cls(i, np_array, row_flags) for i in range(cls.STEP)]
         for p in procs:
             p.start()
-        return procs, msg_q, np_array
+        return procs, np_array, row_flags
 
     def run(self):
         ##### Constants #####
@@ -82,20 +84,20 @@ class MandelProc(Process):
         RMAX = MandelProc.RMAX
         IMIN = MandelProc.IMIN
         IMAX = MandelProc.IMAX
+        PALLETE = MandelProc.PALLETE
+        PALLETE_LEN = len(PALLETE)
         LOG2 = log(2)
         BAILRADIUS = 1 << 16
-        msg_q = self.msg_q
-        data = self.data
-        NaN = float('NaN') # Nan is used to signal "in the set"
         #####################
+
+        data = self.data
+        row_flags = self.row_flags
 
         for py in np.arange(self.offset, PIXHEIGHT, STEP):
             # scale y pixel to be between 1 and -1.
             # note: pixel y axis increases as cartesian y axis decreases,
             # which is why (pixheight - py) is used.
             y0 = IMIN + (IMAX - IMIN)*(PIXHEIGHT - py)/PIXHEIGHT
-            msg_q.put('Starting work for row %d/%d'%(py,PIXHEIGHT))
-            data[py,:] = NaN
 
             for px in np.arange(PIXWIDTH):
                 # scale x pixel to be between -2 and 1.
@@ -130,6 +132,15 @@ class MandelProc(Process):
                     log_zn = log(x*x + y*y)/2
                     nu = log(log_zn/LOG2)/LOG2
                     i = i + 1 - nu
-                    data[py,px] = i
-        
-        msg_q.put('done')
+                    # interpolate color
+                    start_color = int(i%PALLETE_LEN)
+                    end_color = int((start_color + 1)%PALLETE_LEN)
+                    fraction = i%1.0
+                    r, g, b = colors.rgb_interp(PALLETE[start_color],
+                                                PALLETE[end_color],
+                                                fraction)
+                    data[py,3*px] = 255*r
+                    data[py,3*px+1] = 255*g
+                    data[py,3*px+2] = 255*b
+                    
+            row_flags[py] = 1

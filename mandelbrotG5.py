@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 from mandelproc import MandelProc
 from multiprocessing import cpu_count
+import numpy as np
 import colors
 import png
 import argparse
@@ -69,24 +70,12 @@ parser.add_argument('--color-pallete', '-c', help='Color pallete for the generat
 # * add output file name option
 
 
-def color_rows(data, color_pallete, default):
-    num_colors = len(color_pallete)
-    default = [p/255.0 for p in default]
-    for row in data:
-        color_data = []
-        add_color = color_data.extend
-        for escape_time in row:
-            if math.isnan(escape_time):
-                add_color(default)
-            else:
-                start_color = int(escape_time%num_colors)
-                end_color = int((start_color + 1)%num_colors)
-                fraction = escape_time%1.0
-                normalized_color = colors.rgb_interp(color_pallete[start_color],
-                                                     color_pallete[end_color],
-                                                     fraction)
-                add_color(normalized_color)
-        yield [int(255*p) for p in color_data]
+def synced(data, row_flags):
+    l = len(data)
+    for i in np.arange(l):
+        while not row_flags[i]:
+            pass
+        yield data[i]
 
 
 def main():
@@ -96,11 +85,13 @@ def main():
                         args.height,
                         args.processes,
                         args.real_bounds,
-                        args.imaginary_bounds)
-    procs, msg_q, data = MandelProc.begin_compute()
+                        args.imaginary_bounds,
+                        args.color_pallete)
+    procs, data, row_flags = MandelProc.begin_compute()
     img_file = open('mandelbrotG5-%dx%d.png'%(args.width,args.height), 'wb')
     writer = png.Writer(args.width, args.height)
-    writer.write(img_file, color_rows(data, args.color_pallete, (0,0,0)))
+    writer.write(img_file, synced(data, row_flags))
+
 
 if __name__ == '__main__':
     main()
