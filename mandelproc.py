@@ -19,12 +19,13 @@ class MandelProc(Process):
     IMAX = None
     PALLETE = None
 
-    def __init__(self, procnum, data, row_flags, *args, **kwds):
+    def __init__(self, procnum, data, row_flags, x_coords, *args, **kwds):
         """A helper process for generating the Mandelbrot set."""
         Process.__init__(self, *args, **kwds)
         self.offset = procnum
         self.data = data
         self.row_flags = row_flags
+        self.x_coords = x_coords
 
     @classmethod
     def set_info(cls, iters, width, height, num_procs, rbounds, ibounds, pallete):
@@ -65,11 +66,12 @@ class MandelProc(Process):
             if getattr(cls, v, None) is None:
                 raise MandelProcException(no_val.format(v))
         
-        shared_array = RawArray('B', 3*cls.PIXWIDTH*cls.PIXHEIGHT)
+        x_coords = RawArray('I', np.arange(cls.PIXWIDTH, dtype='I'))
+        pixel_data = RawArray('B', 3*cls.PIXWIDTH*cls.PIXHEIGHT)
         row_flags = RawArray('B', cls.PIXHEIGHT)
-        np_array = np.frombuffer(shared_array, dtype='B')
+        np_array = np.frombuffer(pixel_data, dtype='B')
         np_array = np_array.reshape(cls.PIXHEIGHT, 3*cls.PIXWIDTH)
-        procs = [cls(i, np_array, row_flags) for i in range(cls.STEP)]
+        procs = [cls(i, np_array, row_flags, x_coords) for i in range(cls.STEP)]
         for p in procs:
             p.start()
         return procs, np_array, row_flags
@@ -88,6 +90,7 @@ class MandelProc(Process):
         PALLETE_LEN = len(PALLETE)
         LOG2 = log(2)
         BAILRADIUS = 1 << 16
+        XCOORDS = self.x_coords
         #####################
 
         data = self.data
@@ -96,12 +99,12 @@ class MandelProc(Process):
         for py in np.arange(self.offset, PIXHEIGHT, STEP):
             # scale y pixel to be between 1 and -1.
             # note: pixel y axis increases as cartesian y axis decreases,
-            # which is why (pixheight - py) is used.
-            y0 = IMIN + (IMAX - IMIN)*(PIXHEIGHT - py)/PIXHEIGHT
+            # which is why we subtract from IMAX instead of adding to IMIN.
+            y0 = IMAX - (IMAX - IMIN)*py/PIXHEIGHT
 
-            for px in np.arange(PIXWIDTH):
+            for px in XCOORDS:
                 # scale x pixel to be between -2 and 1.
-                x0 = (RMAX - RMIN)*px/PIXWIDTH + RMIN
+                x0 = RMIN + (RMAX - RMIN)*px/PIXWIDTH
                 # cardiod test
                 q = (x0 - .25)**2 + y0*y0
                 if q*(q + (x0 - .25)) < .25*y0*y0:

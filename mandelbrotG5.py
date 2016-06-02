@@ -56,14 +56,13 @@ def colorlist(s):
 
 parser = argparse.ArgumentParser(description='Generates images of the Mandelbrot set.',
                                  epilog='Dedicated to my Powermac G5 Quad.')
-parser.add_argument('--height', '-H', help='Pixel height of the generated image', required=True, type=int)
-parser.add_argument('--width', '-W', help='Pixel width of the generated image', required=True, type=int)
 parser.add_argument('--processes', '-p', help='Number of processes to use for image generation.', default=cpu_count(), type=int)
 parser.add_argument('--iterations', '-i', help='Number of iterations for \'escape time\' test.', default=100, type=int)
 parser.add_argument('--verbose', '-v', help='Verbose output', action='store_true', default=False)
 parser.add_argument('--real-bounds', '-r', help='Bounds for the real part of the Mandelbrot calculations.', type=bounds, default=(-2.0, 1.0))
 parser.add_argument('--imaginary-bounds', '-I', help='Bounds for the imaginary part of the Mandelbrot calculations.', type=bounds, default=(-1.0, 1.0))
 parser.add_argument('--color-pallete', '-c', help='Color pallete for the generated image. Must be of the form "RRGGBB,RRGGBB,RRGGBB", where R, G, and B are hex digits.', type=colorlist, default=colors.pallete)
+parser.add_argument('--zoom', '-z', help='Scale factor for image bounds, e.g. the default bounds with zoom of 1000 makes an image 3000 pixels wide and 2000 tall.', type=float, default=1000.0)
 
 # TODO:
 # * add color option for inside Mandelbrot set
@@ -80,16 +79,18 @@ def synced(data, row_flags):
 
 def main():
     args = parser.parse_args()
+    width = int(args.zoom*(args.real_bounds[1] - args.real_bounds[0]))
+    height = int(args.zoom*(args.imaginary_bounds[1] - args.imaginary_bounds[0]))
     MandelProc.set_info(args.iterations,
-                        args.width,
-                        args.height,
+                        width,
+                        height,
                         args.processes,
                         args.real_bounds,
                         args.imaginary_bounds,
                         args.color_pallete)
     procs, data, row_flags = MandelProc.begin_compute()
-    img_file = open('mandelbrotG5-%dx%d.png'%(args.width,args.height), 'wb')
-    writer = png.Writer(args.width, args.height)
+    img_file = open('mandelbrotG5-%dx%d.png'%(width,height), 'wb')
+    writer = png.Writer(width, height)
     writer.write(img_file, synced(data, row_flags))
 
 
