@@ -42,23 +42,23 @@ def colorlist(s):
             raise argparse.ArgumentTypeError(err_msg.format(c))
         c_rgb = []
         for i in range(3):
-            e_x = c[2*i:2*i+1]
+            e_x = c[2*i:2*i+2]
             try:
                 e_i = int(e_x, 16)
             except:
                 raise argparse.ArgumentTypeError(err_msg.format(c))
-            c_rgb.append(e_i/255.0)
+            c_rgb.append(e_i)
         result.append(c_rgb)
     if len(result) == 1:
         result.append(result[0])
+    result = [(c[0]/255.0, c[1]/255.0, c[2]/255.0) for c in result]
     return result
-                
+
 
 parser = argparse.ArgumentParser(description='Generates images of the Mandelbrot set.',
                                  epilog='Dedicated to my Powermac G5 Quad.')
 parser.add_argument('--processes', '-p', help='Number of processes to use for image generation.', default=cpu_count(), type=int)
 parser.add_argument('--iterations', '-i', help='Number of iterations for \'escape time\' test.', default=100, type=int)
-parser.add_argument('--verbose', '-v', help='Verbose output', action='store_true', default=False)
 parser.add_argument('--real-bounds', '-r', help='Bounds for the real part of the Mandelbrot calculations.', type=bounds, default=(-2.0, 1.0))
 parser.add_argument('--imaginary-bounds', '-I', help='Bounds for the imaginary part of the Mandelbrot calculations.', type=bounds, default=(-1.0, 1.0))
 parser.add_argument('--color-pallete', '-c', help='Color pallete for the generated image. Must be of the form "RRGGBB,RRGGBB,RRGGBB", where R, G, and B are hex digits.', type=colorlist, default=colors.pallete)
